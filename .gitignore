@@ -1,0 +1,5 @@
+atmos_bundle/
+atmos_live.db
+__pycache__/
+*.pyc
+.env
