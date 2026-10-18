@@ -237,10 +237,15 @@ def daily_ep(device_id:str,location:str=DEFAULT_CITY,days:int=30,x_api_key:str=H
         d.loc[g['aqi'].count()<MIN_SAMPLES_PER_HOUR,['aqi','pm2_5','pm10']]=np.nan; d=d[d.index<today]
     else: d=pd.DataFrame(columns=['aqi','pm2_5','pm10'],dtype=float)
     n_hist=int(d['aqi'].notna().sum()) if len(d) else 0; origin=today-pd.Timedelta(days=1)
+    if n_hist==0:
+        return {'device_id':device_id,'location':city,'basis':'no_data','history_days_used':0,'days_required':3,'message':'Collecting data — need 3 days minimum for daily forecast','forecast':[]}
     ra=d['aqi'] if n_hist>=3 else d['aqi'].iloc[0:0]; rp=d['pm2_5'] if n_hist>=3 else d['pm2_5'].iloc[0:0]; r10=d['pm10'] if n_hist>=3 else d['pm10'].iloc[0:0]
-    p_aqi=final_daily[city]['aqi'].predict(ra,origin).iloc[:days]
-    p_pm=final_daily[city]['pm2_5'].predict(rp,origin).iloc[:days]
-    p_p10=final_daily[city]['pm10'].predict(r10,origin).iloc[:days]
+    try:
+        p_aqi=final_daily[city]['aqi'].predict(ra,origin).iloc[:days]
+        p_pm=final_daily[city]['pm2_5'].predict(rp,origin).iloc[:days]
+        p_p10=final_daily[city]['pm10'].predict(r10,origin).iloc[:days]
+    except Exception:
+        return {'device_id':device_id,'location':city,'basis':'seasonal_only','history_days_used':n_hist,'days_required':3,'message':f'Collecting {n_hist}/3 days — seasonal forecast available after 3 days','forecast':[]}
     items=[]
     for i in range(len(p_aqi)):
         lv=aqi_to_level(p_aqi['forecast'].iloc[i])
