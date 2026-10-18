@@ -171,8 +171,9 @@ class Reading(BaseModel):
     nitrogen_dioxide: float | None = None; sulphur_dioxide: float | None = None; ozone: float | None = None
 api=FastAPI(title='ATMOS API',version=bundle['version'])
 api.add_middleware(CORSMiddleware,allow_origins=['*'],allow_methods=['GET','POST'],allow_headers=['*'])
+API_VERSION='v1.4'
 @api.get('/healthz')
-def health(): return {'ok':True,'model_version':bundle['version'],'cities':CITIES,'time':datetime.now(TZ).isoformat()}
+def health(): return {'ok':True,'api_version':API_VERSION,'model_version':bundle['version'],'cities':CITIES,'time':datetime.now(TZ).isoformat()}
 @api.post('/api/v1/readings')
 def ingest(r:Reading,x_api_key:str=Header(default='')):
     if x_api_key != SENSOR_KEY: raise HTTPException(403,'bad key')
