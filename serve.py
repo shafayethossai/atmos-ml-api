@@ -21,6 +21,63 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# ── Required class definitions for unpickling the bundle ──────────────────────
+def fourier(idx, K=4):
+    t = np.asarray(idx.dayofyear, float)/365.25*2*np.pi
+    return np.column_stack([fn(k*t) for k in range(1,K+1) for fn in (np.sin,np.cos)])
+
+def anomaly_feats(an):
+    return pd.DataFrame({'a1':an.ffill(limit=2),'a3':an.rolling(3,min_periods=1).mean(),
+                         'a7':an.rolling(7,min_periods=3).mean(),'a30':an.rolling(30,min_periods=7).mean(),
+                         'a_trend':an.ffill(limit=2) - an.rolling(7,min_periods=3).mean()})
+
+ACOLS = ['a1','a3','a7','a30','a_trend']
+
+class DailyForecasterCity:
+    def __init__(self, target, H=30, K=4, lo=5.0, hi=500.0):
+        self.target, self.H, self.K = target, H, K
+        self.lo, self.hi = lo, hi
+        self.resid_q = {}; self.models = {}; self.clim = None
+    def fit(self, daily_city):
+        s = daily_city[self.target].interpolate(limit=3, limit_direction='both')
+        v = s.dropna()
+        if len(v) < 60: return self
+        self.clim = Ridge(alpha=1.0).fit(fourier(v.index, self.K), v.values)
+        an = pd.Series(s.values - self.clim.predict(fourier(s.index, self.K)), index=s.index)
+        Fd = anomaly_feats(an).dropna()
+        for h in range(1, self.H+1):
+            D = Fd.join(an.shift(-h).rename('y'), how='inner').dropna()
+            if len(D) < 80: self.models[h] = []; continue
+            Xb, y = D[ACOLS].values, D['y'].values
+            cands = [Ridge(alpha=5.0).fit(Xb, y)]
+            cands.append(lgb.LGBMRegressor(n_estimators=200, learning_rate=0.03, num_leaves=15,
+                min_child_samples=20, subsample=0.8, colsample_bytree=0.8, reg_lambda=2.0,
+                verbose=-1, random_state=42).fit(Xb, y))
+            self.models[h] = cands
+        return self
+    def predict(self, recent, origin):
+        origin = pd.Timestamp(origin).normalize()
+        s = recent if isinstance(recent, pd.Series) else recent[self.target]
+        s = s.reindex(pd.date_range(origin - pd.Timedelta(days=29), origin))
+        if int(s.notna().sum()) >= 3:
+            an = pd.Series(s.values - self.clim.predict(fourier(s.index, self.K)), index=s.index)
+            f = anomaly_feats(an).iloc[-1].fillna(0.0)
+        else:
+            f = pd.Series(0.0, index=ACOLS)
+        fut = pd.date_range(origin + pd.Timedelta(days=1), periods=self.H)
+        base = self.clim.predict(fourier(fut, self.K))
+        xa = f[ACOLS].values.astype(float)
+        yhat = np.empty(self.H)
+        for h in range(1, self.H+1):
+            cands = self.models.get(h, [])
+            preds = [float(m.predict(xa[None])[0]) for m in cands]
+            yhat[h-1] = base[h-1] + (np.mean(preds) if preds else 0.0)
+        yhat = np.clip(yhat, self.lo, self.hi)
+        band = 15 + 0.5 * np.arange(1, self.H+1)
+        return pd.DataFrame({'date':fut,'h':np.arange(1,self.H+1),'climatology':base,
+                             'forecast':yhat,'low':np.clip(yhat-band,self.lo,self.hi),
+                             'high':np.clip(yhat+band,self.lo,self.hi)}).set_index('date')
+
 DB_PATH     = os.environ.get('ATMOS_DB_PATH', 'atmos_live.db')
 PORT        = int(os.environ.get('PORT', 8000))
 bundle = joblib.load(BUNDLE_PATH)
