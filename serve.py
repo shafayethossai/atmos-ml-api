@@ -232,7 +232,7 @@ def daily_ep(device_id:str,location:str=DEFAULT_CITY,days:int=30,x_api_key:str=H
     today=pd.Timestamp(datetime.now(TZ).replace(tzinfo=None)).normalize()
     if len(hf)>0:
         full=hf.reindex(pd.date_range(hf.index.min(),hf.index.max(),freq='h'))
-        full['aqi']=compute_aqi(**{p:full[p].values for p in POLLUTANTS})
+        full['aqi']=full.apply(lambda row: compute_aqi(**{p:row[p] for p in POLLUTANTS}),axis=1)
         g=full.resample('D'); d=pd.DataFrame({'aqi':g['aqi'].mean(),'pm2_5':g['pm2_5'].mean(),'pm10':g['pm10'].mean()})
         d.loc[g['aqi'].count()<MIN_SAMPLES_PER_HOUR,['aqi','pm2_5','pm10']]=np.nan; d=d[d.index<today]
     else: d=pd.DataFrame(columns=['aqi','pm2_5','pm10'],dtype=float)
@@ -260,7 +260,7 @@ def device_requirement(device_id:str,location:str=DEFAULT_CITY,scenario:str='ind
     hf=_hourly_frame(device_id,city); today=pd.Timestamp(datetime.now(TZ).replace(tzinfo=None)).normalize()
     if len(hf)>0:
         full=hf.reindex(pd.date_range(hf.index.min(),hf.index.max(),freq='h'))
-        full['aqi']=compute_aqi(**{p:full[p].values for p in POLLUTANTS})
+        full['aqi']=full.apply(lambda row: compute_aqi(**{p:row[p] for p in POLLUTANTS}),axis=1)
         g=full.resample('D'); d=pd.DataFrame({'aqi':g['aqi'].mean(),'pm2_5':g['pm2_5'].mean(),'pm10':g['pm10'].mean()})
         d.loc[g['aqi'].count()<MIN_SAMPLES_PER_HOUR,['aqi','pm2_5','pm10']]=np.nan; d=d[d.index<today]
     else: d=pd.DataFrame(columns=['aqi','pm2_5','pm10'],dtype=float)
