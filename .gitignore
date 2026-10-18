@@ -1,5 +1,8 @@
+# ML API — private files
+.env
 atmos_bundle/
 atmos_live.db
 __pycache__/
 *.pyc
-.env
+*.pyo
+*.PublishSettings
