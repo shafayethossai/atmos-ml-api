@@ -228,6 +228,11 @@ def hourly_ep(device_id:str,location:str=DEFAULT_CITY,x_api_key:str=Header(defau
 @api.get('/api/v1/forecast/daily')
 def daily_ep(device_id:str,location:str=DEFAULT_CITY,days:int=30,x_api_key:str=Header(default='')):
     if x_api_key!=READ_KEY: raise HTTPException(401,'bad read key')
+    try:
+        return _daily_inner(device_id,location,days)
+    except Exception as e:
+        return {'device_id':device_id,'status':'error','detail':str(e),'forecast':[]}
+def _daily_inner(device_id,location,days):
     city=normalize_city(location); hf=_hourly_frame(device_id,city)
     today=pd.Timestamp(datetime.now(TZ).replace(tzinfo=None)).normalize()
     if len(hf)>0:
